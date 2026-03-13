@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Territory Intelligence -- Geo View | Uber Eats BPO</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#111; color:#fff; overflow:hidden; }
+:root { --green:#06C167; --blue:#276EF1; --red:#E11D48; --amber:#F5A623; --dark:#171717; --white:#FFF; }
+
+/* NAV */
+.navbar { height:56px; background:#000; display:flex; align-items:center; padding:0 24px; border-bottom:1px solid #333; z-index:1000; position:relative; }
+.navbar .logo { font-size:20px; font-weight:700; color:var(--green); letter-spacing:-0.5px; }
+.navbar .title { margin-left:16px; font-size:15px; color:#ccc; font-weight:400; }
+.navbar .badge { margin-left:auto; background:var(--green); color:#000; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; }
+
+/* LAYOUT */
+.main { display:flex; height:calc(100vh - 56px - 36px); }
+.panel { width:38%; min-width:360px; background:#0a0a0a; border-right:1px solid #222; overflow-y:auto; padding:16px; }
+.map-wrap { flex:1; position:relative; }
+#map { width:100%; height:100%; }
+
+/* BOTTOM TICKER */
+.ticker { height:36px; background:#000; border-top:1px solid #222; display:flex; align-items:center; overflow:hidden; }
+.ticker-label { padding:0 12px; font-size:11px; font-weight:600; color:var(--green); white-space:nowrap; }
+.ticker-content { flex:1; overflow:hidden; position:relative; }
+.ticker-scroll { display:flex; animation:tickerScroll 60s linear infinite; white-space:nowrap; }
+.ticker-item { padding:0 32px; font-size:12px; color:#999; }
+@keyframes tickerScroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+
+/* FILTERS */
+.filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.filters select { background:#1a1a1a; color:#ccc; border:1px solid #333; border-radius:6px; padding:6px 10px; font-size:12px; outline:none; }
+.filters select:focus { border-color:var(--green); }
+
+/* SUMMARY CARDS */
+.summary { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; }
+.scard { background:#1a1a1a; border:1px solid #222; border-radius:8px; padding:10px 12px; }
+.scard .val { font-size:22px; font-weight:700; color:var(--green); }
+.scard .lbl { font-size:11px; color:#888; margin-top:2px; }
+
+/* ZONE LIST */
+.zone-list { margin-bottom:16px; }
+.zone-item { background:#141414; border:1px solid #222; border-radius:8px; padding:10px 12px; margin-bottom:6px; cursor:pointer; transition:all 0.2s; }
+.zone-item:hover { border-color:var(--green); background:#1a1a1a; }
+.zone-item.active { border-color:var(--green); background:#0f1f0f; }
+.zone-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.zone-name { font-size:13px; font-weight:600; }
+.zone-country { font-size:11px; color:#888; margin-left:6px; }
+.badge-crit { background:var(--red); color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
+.badge-high { background:var(--amber); color:#000; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
+.badge-med { background:var(--blue); color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
+.badge-low { background:#333; color:#aaa; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
+.cov-bar-wrap { background:#222; border-radius:4px; height:6px; margin-bottom:6px; overflow:hidden; }
+.cov-bar { height:100%; border-radius:4px; transition:width 0.3s; }
+.zone-metrics { display:flex; gap:12px; font-size:11px; color:#888; }
+.zone-metrics span { white-space:nowrap; }
+
+/* AI PANEL */
+.ai-panel { background:#0d1117; border:1px solid #1a2332; border-radius:10px; padding:14px; margin-top:8px; }
+.ai-panel h3 { font-size:13px; color:var(--green); margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.ai-section { margin-bottom:12px; }
+.ai-section h4 { font-size:12px; color:#aaa; margin-bottom:4px; font-weight:500; }
+.ai-section p { font-size:12px; color:#ccc; line-height:1.5; }
+.ai-cats { display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+.ai-cat { background:#1a2332; color:var(--blue); padding:3px 8px; border-radius:4px; font-size:11px; }
+.ai-story { background:#111a10; border-left:3px solid var(--green); padding:8px 10px; border-radius:0 6px 6px 0; margin-top:6px; }
+.ai-story p { font-size:11px; color:#9f9; line-height:1.5; }
+.ai-msg { background:#1a1a2e; border:1px solid #2a2a4e; border-radius:8px; padding:10px; margin-top:8px; }
+.ai-msg p { font-size:11px; color:#bbc; line-height:1.5; font-style:italic; }
+.ai-placeholder { text-align:center; padding:30px 10px; color:#555; font-size:13px; }
+
+/* LEGEND */
+.legend-panel { margin-top:12px; padding:10px; background:#141414; border:1px solid #222; border-radius:8px; }
+.legend-panel h4 { font-size:12px; color:#aaa; margin-bottom:8px; }
+.legend-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:11px; color:#999; }
+.legend-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+
+/* SCROLLBAR */
+.panel::-webkit-scrollbar { width:6px; }
+.panel::-webkit-scrollbar-track { background:#0a0a0a; }
+.panel::-webkit-scrollbar-thumb { background:#333; border-radius:3px; }
+.panel::-webkit-scrollbar-thumb:hover { background:#555; }
+
+/* SECTION HEADERS */
+.section-hdr { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#666; margin:12px 0 8px; font-weight:600; }
+
+/* Leaflet popup custom */
+.leaflet-popup-content-wrapper { background:#1a1a1a; color:#fff; border-radius:10px; border:1px solid #333; }
+.leaflet-popup-tip { background:#1a1a1a; }
+.leaflet-popup-content { margin:12px 14px; font-size:12px; line-height:1.6; }
+.popup-title { font-size:14px; font-weight:700; margin-bottom:4px; }
+.popup-country { font-size:11px; color:#888; margin-bottom:8px; }
+.popup-row { display:flex; justify-content:space-between; margin-bottom:2px; }
+.popup-label { color:#888; }
+.popup-val { font-weight:600; }
+.popup-val.g { color:var(--green); }
+.popup-val.r { color:var(--red); }
+.popup-val.a { color:var(--amber); }
+.popup-rec { margin-top:8px; padding:6px 8px; background:#0d1117; border-radius:6px; font-size:11px; color:#9cf; line-height:1.4; }
+.popup-btn { margin-top:8px; background:var(--green); color:#000; border:none; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; width:100%; }
+.popup-btn:hover { background:#05a855; }
+
+/* LEAFLET LAYER CONTROL */
+.leaflet-control-layers { background:#1a1a1a !important; color:#ccc !important; border:1px solid #333 !important; border-radius:8px !important; }
+.leaflet-control-layers label { color:#ccc !important; }
+</style>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="logo">Uber Eats</div>
+  <div class="title">Territory Intelligence &mdash; Geo View</div>
+  <div class="badge">V2 INTERACTIVE MAP</div>
+</div>
+
+<div class="main">
+  <div class="panel" id="leftPanel">
+
+    <div class="filters">
+      <select id="filterCountry" onchange="applyFilters()">
+        <option value="All">All Countries</option>
+      </select>
+      <select id="filterPriority" onchange="applyFilters()">
+        <option value="All">All Priorities</option>
+        <option value="CRITICAL">Critical</option>
+        <option value="HIGH">High</option>
+        <option value="MEDIUM">Medium</option>
+        <option value="LOW">Low</option>
+      </select>
+    </div>
+
+    <div class="summary" id="summaryCards">
+      <div class="scard"><div class="val" id="sumZones">29</div><div class="lbl">Total Zones</div></div>
+      <div class="scard"><div class="val" id="sumCov">22.1%</div><div class="lbl">Avg Coverage</div></div>
+      <div class="scard"><div class="val" style="color:var(--red)" id="sumHot">11</div><div class="lbl">Hot Opportunities</div></div>
+      <div class="scard"><div class="val" style="color:var(--amber)" id="sumGap">29,205</div><div class="lbl">Total Market Gap</div></div>
+    </div>
+
+    <div class="section-hdr">Zone Ranking</div>
+    <div class="zone-list" id="zoneList"></div>
+
+    <div class="section-hdr">AI Strategic Intelligence</div>
+    <div class="ai-panel" id="aiPanel">
+      <div class="ai-placeholder">Click a zone on the map or list to see AI recommendations</div>
+    </div>
+
+    <div class="legend-panel">
+      <h4>Coverage Heatmap Legend</h4>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--red)"></div>Hot Opportunity: coverage &lt;15% &amp; demand &gt;60</div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--amber)"></div>Growth Zone: coverage 15-35% or demand 40-60</div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--green)"></div>Covered: coverage 35-50%</div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--blue)"></div>Saturated: coverage &gt;50% (focus retention)</div>
+    </div>
+
+  </div>
+  <div class="map-wrap">
+    <div id="map"></div>
+  </div>
+</div>
+
+<div class="ticker">
+  <div class="ticker-label">AI INSIGHTS</div>
+  <div class="ticker-content">
+    <div class="ticker-scroll" id="tickerScroll"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  "use strict";
+
+  var ZONES = [{"country": "Ecuador", "flag": "🇪🇨", "zone": "Guayaquil", "lat": -2.171, "lng": -79.9224, "active": 111, "onboarding": 19, "potential": 493, "coverage": 22.5, "demand": 86, "competition": "low", "competitors": ["PedidosYa"], "avg_gmv": 3377.0, "photo_pct": 61.5, "ror_pct": 39.9, "opp_score": 55.0, "priority": "CRITICAL", "win_rate": 15.3, "activation_rate": 81.7, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 14.0, "target_categories": ["Mexican", "Colombian", "Sushi"], "success_story": {"zone": "Quito", "count": 74, "days": 17, "approach": "WhatsApp blitz"}}, {"country": "Panama", "flag": "🇵🇦", "zone": "Ciudad de Panama", "lat": 8.9836, "lng": -79.5197, "active": 9, "onboarding": 2, "potential": 32, "coverage": 28.1, "demand": 89, "competition": "low", "competitors": ["DiDi Food", "PedidosYa"], "avg_gmv": 3873.0, "photo_pct": 33.5, "ror_pct": 94.9, "opp_score": 53.7, "priority": "CRITICAL", "win_rate": 12.2, "activation_rate": 74.4, "recommendation": "Expand systematically. Focus on underserved categories and use referral programs from existing partners.", "approach": "Referral + Email", "expected_conversion": 14.8, "target_categories": ["Healthy", "Sushi", "Chinese"], "success_story": {"zone": "David", "count": 45, "days": 31, "approach": "field visits"}}, {"country": "Guatemala", "flag": "🇬🇹", "zone": "Ciudad de Guatemala", "lat": 14.6349, "lng": -90.5069, "active": 8, "onboarding": 2, "potential": 36, "coverage": 22.2, "demand": 82, "competition": "low", "competitors": ["DiDi Food"], "avg_gmv": 1612.0, "photo_pct": 80.3, "ror_pct": 36.2, "opp_score": 49.4, "priority": "CRITICAL", "win_rate": 16.9, "activation_rate": 77.4, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 19.4, "target_categories": ["Colombian", "Italian", "Peruvian"], "success_story": {"zone": "Antigua", "count": 18, "days": 39, "approach": "WhatsApp blitz"}}, {"country": "Chile", "flag": "🇨🇱", "zone": "Santiago", "lat": -33.4489, "lng": -70.6693, "active": 223, "onboarding": 37, "potential": 1631, "coverage": 13.7, "demand": 73, "competition": "low", "competitors": ["Rappi"], "avg_gmv": 2789.0, "photo_pct": 54.5, "ror_pct": 31.3, "opp_score": 48.9, "priority": "CRITICAL", "win_rate": 34.0, "activation_rate": 81.0, "recommendation": "Immediate field deployment. High demand with minimal coverage — launch blitz campaign with WhatsApp outreach + in-person visits.", "approach": "WhatsApp + Field Visit", "expected_conversion": 18.7, "target_categories": ["Sushi", "Coffee & Bakery", "Healthy"], "success_story": {"zone": "Valparaiso", "count": 71, "days": 33, "approach": "WhatsApp blitz"}}, {"country": "Costa Rica", "flag": "🇨🇷", "zone": "San Jose", "lat": 9.9281, "lng": -84.0907, "active": 133, "onboarding": 13, "potential": 749, "coverage": 17.8, "demand": 63, "competition": "low", "competitors": ["PedidosYa", "Rappi"], "avg_gmv": 4225.0, "photo_pct": 43.7, "ror_pct": 48.7, "opp_score": 43.9, "priority": "CRITICAL", "win_rate": 38.6, "activation_rate": 85.0, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 15.4, "target_categories": ["Colombian", "Fast Food", "Italian"], "success_story": {"zone": "Heredia", "count": 67, "days": 29, "approach": "WhatsApp blitz"}}, {"country": "Ecuador", "flag": "🇪🇨", "zone": "Quito", "lat": -0.1807, "lng": -78.4678, "active": 98, "onboarding": 13, "potential": 579, "coverage": 16.9, "demand": 68, "competition": "low", "competitors": ["PedidosYa"], "avg_gmv": 1114.0, "photo_pct": 61.9, "ror_pct": 44.9, "opp_score": 43.7, "priority": "CRITICAL", "win_rate": 12.9, "activation_rate": 71.6, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 20.5, "target_categories": ["Sushi", "Burgers", "Healthy"], "success_story": {"zone": "Guayaquil", "count": 40, "days": 23, "approach": "referral program"}}, {"country": "Mexico", "flag": "🇲🇽", "zone": "CDMX", "lat": 19.4326, "lng": -99.1332, "active": 1571, "onboarding": 130, "potential": 8572, "coverage": 18.3, "demand": 66, "competition": "low", "competitors": ["PedidosYa"], "avg_gmv": 3540.0, "photo_pct": 46.7, "ror_pct": 40.9, "opp_score": 39.1, "priority": "HIGH", "win_rate": 25.4, "activation_rate": 68.2, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 14.7, "target_categories": ["Sushi", "Seafood", "Pizza"], "success_story": {"zone": "Monterrey", "count": 40, "days": 40, "approach": "WhatsApp blitz"}}, {"country": "Colombia", "flag": "🇨🇴", "zone": "Medellin", "lat": 6.2442, "lng": -75.5812, "active": 234, "onboarding": 31, "potential": 813, "coverage": 28.8, "demand": 66, "competition": "low", "competitors": ["Rappi"], "avg_gmv": 2290.0, "photo_pct": 48.7, "ror_pct": 46.0, "opp_score": 35.7, "priority": "HIGH", "win_rate": 27.7, "activation_rate": 80.3, "recommendation": "Expand systematically. Focus on underserved categories and use referral programs from existing partners.", "approach": "Referral + Email", "expected_conversion": 13.1, "target_categories": ["Peruvian", "Italian", "Colombian"], "success_story": {"zone": "Cali", "count": 50, "days": 43, "approach": "referral program"}}, {"country": "Dominican Republic", "flag": "🇩🇴", "zone": "Santo Domingo", "lat": 18.4861, "lng": -69.9312, "active": 87, "onboarding": 17, "potential": 675, "coverage": 12.9, "demand": 77, "competition": "medium", "competitors": ["DiDi Food", "Rappi"], "avg_gmv": 2225.0, "photo_pct": 55.0, "ror_pct": 43.2, "opp_score": 34.9, "priority": "HIGH", "win_rate": 41.4, "activation_rate": 80.3, "recommendation": "Immediate field deployment. High demand with minimal coverage — launch blitz campaign with WhatsApp outreach + in-person visits.", "approach": "WhatsApp + Field Visit", "expected_conversion": 18.0, "target_categories": ["Seafood", "Burgers", "Sushi"], "success_story": {"zone": "Santiago de los Caballeros", "count": 70, "days": 18, "approach": "email campaigns"}}, {"country": "Colombia", "flag": "🇨🇴", "zone": "Cali", "lat": 3.4516, "lng": -76.532, "active": 188, "onboarding": 34, "potential": 1319, "coverage": 14.3, "demand": 47, "competition": "low", "competitors": ["Rappi"], "avg_gmv": 4228.0, "photo_pct": 56.6, "ror_pct": 37.3, "opp_score": 32.1, "priority": "HIGH", "win_rate": 27.9, "activation_rate": 78.2, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 15.7, "target_categories": ["Colombian", "Fast Food", "Italian"], "success_story": {"zone": "Cartagena", "count": 15, "days": 38, "approach": "referral program"}}, {"country": "Dominican Republic", "flag": "🇩🇴", "zone": "Santiago de los Caballeros", "lat": 19.4517, "lng": -70.697, "active": 60, "onboarding": 5, "potential": 183, "coverage": 32.8, "demand": 50, "competition": "low", "competitors": ["DiDi Food", "PedidosYa"], "avg_gmv": 3380.0, "photo_pct": 54.7, "ror_pct": 42.3, "opp_score": 27.8, "priority": "HIGH", "win_rate": 34.4, "activation_rate": 69.8, "recommendation": "Expand systematically. Focus on underserved categories and use referral programs from existing partners.", "approach": "Referral + Email", "expected_conversion": 14.3, "target_categories": ["Chinese", "Italian", "Pizza"], "success_story": {"zone": "Santo Domingo", "count": 66, "days": 14, "approach": "email campaigns"}}, {"country": "Colombia", "flag": "🇨🇴", "zone": "Barranquilla", "lat": 10.9685, "lng": -74.7813, "active": 125, "onboarding": 20, "potential": 434, "coverage": 28.8, "demand": 38, "competition": "low", "competitors": ["Rappi", "PedidosYa"], "avg_gmv": 1898.0, "photo_pct": 58.4, "ror_pct": 42.5, "opp_score": 21.8, "priority": "MEDIUM", "win_rate": 26.0, "activation_rate": 74.1, "recommendation": "Expand systematically. Focus on underserved categories and use referral programs from existing partners.", "approach": "Referral + Email", "expected_conversion": 16.5, "target_categories": ["Fast Food", "Chinese", "Pizza"], "success_story": {"zone": "Cartagena", "count": 79, "days": 24, "approach": "field visits"}}, {"country": "Colombia", "flag": "🇨🇴", "zone": "Cartagena", "lat": 10.391, "lng": -75.5144, "active": 108, "onboarding": 9, "potential": 339, "coverage": 31.9, "demand": 31, "competition": "low", "competitors": ["PedidosYa"], "avg_gmv": 3000.0, "photo_pct": 53.0, "ror_pct": 40.5, "opp_score": 17.2, "priority": "MEDIUM", "win_rate": 26.7, "activation_rate": 76.2, "recommendation": "Expand systematically. Focus on underserved categories and use referral programs from existing partners.", "approach": "Referral + Email", "expected_conversion": 15.1, "target_categories": ["Healthy", "Sushi", "Coffee & Bakery"], "success_story": {"zone": "Medellin", "count": 48, "days": 39, "approach": "referral program"}}, {"country": "Costa Rica", "flag": "🇨🇷", "zone": "Heredia", "lat": 10.0024, "lng": -84.1165, "active": 76, "onboarding": 6, "potential": 332, "coverage": 22.9, "demand": 43, "competition": "medium", "competitors": ["DiDi Food", "Rappi"], "avg_gmv": 1625.0, "photo_pct": 49.8, "ror_pct": 52.5, "opp_score": 15.8, "priority": "MEDIUM", "win_rate": 36.7, "activation_rate": 88.0, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 14.6, "target_categories": ["Healthy", "Coffee & Bakery", "Seafood"], "success_story": {"zone": "San Jose", "count": 57, "days": 15, "approach": "field visits"}}, {"country": "Guatemala", "flag": "🇬🇹", "zone": "Antigua", "lat": 14.5586, "lng": -90.7295, "active": 5, "onboarding": 2, "potential": 22, "coverage": 22.7, "demand": 33, "competition": "medium", "competitors": ["Rappi", "DiDi Food"], "avg_gmv": 2009.0, "photo_pct": 88.3, "ror_pct": 40.7, "opp_score": 13.4, "priority": "MEDIUM", "win_rate": 15.0, "activation_rate": 68.5, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 20.7, "target_categories": ["Healthy", "Mexican", "Peruvian"], "success_story": {"zone": "Ciudad de Guatemala", "count": 21, "days": 36, "approach": "WhatsApp blitz"}}, {"country": "Peru", "flag": "🇵🇪", "zone": "Cusco", "lat": -13.532, "lng": -71.9675, "active": 94, "onboarding": 12, "potential": 403, "coverage": 23.3, "demand": 32, "competition": "medium", "competitors": ["PedidosYa", "Rappi"], "avg_gmv": 2411.0, "photo_pct": 52.1, "ror_pct": 44.3, "opp_score": 11.7, "priority": "LOW", "win_rate": 31.0, "activation_rate": 77.8, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 20.5, "target_categories": ["Seafood", "Peruvian", "Burgers"], "success_story": {"zone": "Arequipa", "count": 49, "days": 34, "approach": "WhatsApp blitz"}}, {"country": "Colombia", "flag": "🇨🇴", "zone": "Bogota", "lat": 4.711, "lng": -74.0721, "active": 245, "onboarding": 40, "potential": 1834, "coverage": 13.4, "demand": 62, "competition": "high", "competitors": ["Rappi", "PedidosYa"], "avg_gmv": 1830.0, "photo_pct": 51.0, "ror_pct": 42.0, "opp_score": 11.2, "priority": "LOW", "win_rate": 26.3, "activation_rate": 76.4, "recommendation": "Immediate field deployment. High demand with minimal coverage — launch blitz campaign with WhatsApp outreach + in-person visits.", "approach": "WhatsApp + Field Visit", "expected_conversion": 26.8, "target_categories": ["Pizza", "Peruvian", "Sushi"], "success_story": {"zone": "Cartagena", "count": 67, "days": 26, "approach": "email campaigns"}}, {"country": "Mexico", "flag": "🇲🇽", "zone": "Guadalajara", "lat": 20.6597, "lng": -103.3496, "active": 529, "onboarding": 87, "potential": 4052, "coverage": 13.1, "demand": 22, "competition": "medium", "competitors": ["Rappi"], "avg_gmv": 4006.0, "photo_pct": 44.4, "ror_pct": 39.2, "opp_score": 10.2, "priority": "LOW", "win_rate": 28.0, "activation_rate": 63.6, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 15.3, "target_categories": ["Coffee & Bakery", "Sushi", "Healthy"], "success_story": {"zone": "Tijuana", "count": 24, "days": 24, "approach": "referral program"}}, {"country": "Peru", "flag": "🇵🇪", "zone": "Lima", "lat": -12.0464, "lng": -77.0428, "active": 271, "onboarding": 52, "potential": 1633, "coverage": 16.6, "demand": 60, "competition": "high", "competitors": ["Rappi"], "avg_gmv": 2552.0, "photo_pct": 43.1, "ror_pct": 44.1, "opp_score": 9.9, "priority": "LOW", "win_rate": 24.7, "activation_rate": 66.1, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 16.0, "target_categories": ["Coffee & Bakery", "Italian", "Pizza"], "success_story": {"zone": "Arequipa", "count": 35, "days": 33, "approach": "email campaigns"}}, {"country": "Mexico", "flag": "🇲🇽", "zone": "Cancun", "lat": 21.1619, "lng": -86.8515, "active": 332, "onboarding": 65, "potential": 1242, "coverage": 26.7, "demand": 17, "competition": "low", "competitors": ["Rappi", "PedidosYa"], "avg_gmv": 3841.0, "photo_pct": 50.3, "ror_pct": 38.6, "opp_score": 9.1, "priority": "LOW", "win_rate": 30.9, "activation_rate": 68.9, "recommendation": "Expand systematically. Focus on underserved categories and use referral programs from existing partners.", "approach": "Referral + Email", "expected_conversion": 17.5, "target_categories": ["Pizza", "Coffee & Bakery", "Sushi"], "success_story": {"zone": "Tijuana", "count": 78, "days": 39, "approach": "field visits"}}, {"country": "Mexico", "flag": "🇲🇽", "zone": "Puebla", "lat": 19.0414, "lng": -98.2063, "active": 280, "onboarding": 30, "potential": 1123, "coverage": 24.9, "demand": 15, "competition": "low", "competitors": ["PedidosYa", "DiDi Food"], "avg_gmv": 2139.0, "photo_pct": 53.0, "ror_pct": 35.5, "opp_score": 9.0, "priority": "LOW", "win_rate": 26.7, "activation_rate": 68.3, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 20.0, "target_categories": ["Mexican", "Italian", "Burgers"], "success_story": {"zone": "Leon", "count": 69, "days": 18, "approach": "referral program"}}, {"country": "Mexico", "flag": "🇲🇽", "zone": "Leon", "lat": 21.1221, "lng": -101.6821, "active": 306, "onboarding": 41, "potential": 1241, "coverage": 24.7, "demand": 15, "competition": "low", "competitors": ["Rappi", "PedidosYa"], "avg_gmv": 3438.0, "photo_pct": 44.7, "ror_pct": 41.8, "opp_score": 8.8, "priority": "LOW", "win_rate": 23.7, "activation_rate": 67.7, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 21.2, "target_categories": ["Peruvian", "Mexican", "Sushi"], "success_story": {"zone": "Monterrey", "count": 23, "days": 35, "approach": "field visits"}}, {"country": "Peru", "flag": "🇵🇪", "zone": "Arequipa", "lat": -16.409, "lng": -71.5375, "active": 144, "onboarding": 27, "potential": 697, "coverage": 20.7, "demand": 49, "competition": "high", "competitors": ["PedidosYa"], "avg_gmv": 3355.0, "photo_pct": 50.6, "ror_pct": 34.3, "opp_score": 8.2, "priority": "LOW", "win_rate": 29.4, "activation_rate": 66.7, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 20.8, "target_categories": ["Pizza", "Mexican", "Chinese"], "success_story": {"zone": "Lima", "count": 59, "days": 41, "approach": "email campaigns"}}, {"country": "Mexico", "flag": "🇲🇽", "zone": "Merida", "lat": 20.9674, "lng": -89.5926, "active": 260, "onboarding": 51, "potential": 817, "coverage": 31.8, "demand": 15, "competition": "low", "competitors": ["PedidosYa"], "avg_gmv": 4074.0, "photo_pct": 49.6, "ror_pct": 43.0, "opp_score": 7.9, "priority": "LOW", "win_rate": 27.8, "activation_rate": 61.7, "recommendation": "Expand systematically. Focus on underserved categories and use referral programs from existing partners.", "approach": "Referral + Email", "expected_conversion": 13.8, "target_categories": ["Italian", "Peruvian", "Fast Food"], "success_story": {"zone": "Tijuana", "count": 48, "days": 25, "approach": "email campaigns"}}, {"country": "Chile", "flag": "🇨🇱", "zone": "Concepcion", "lat": -36.827, "lng": -73.0498, "active": 89, "onboarding": 10, "potential": 592, "coverage": 15.0, "demand": 39, "competition": "high", "competitors": ["PedidosYa", "DiDi Food"], "avg_gmv": 2875.0, "photo_pct": 48.1, "ror_pct": 39.9, "opp_score": 6.9, "priority": "LOW", "win_rate": 28.4, "activation_rate": 71.8, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 15.2, "target_categories": ["Fast Food", "Coffee & Bakery", "Pizza"], "success_story": {"zone": "Santiago", "count": 70, "days": 22, "approach": "WhatsApp blitz"}}, {"country": "Chile", "flag": "🇨🇱", "zone": "Valparaiso", "lat": -33.0472, "lng": -71.6127, "active": 139, "onboarding": 20, "potential": 415, "coverage": 33.5, "demand": 35, "competition": "high", "competitors": ["Rappi", "PedidosYa"], "avg_gmv": 3547.0, "photo_pct": 48.8, "ror_pct": 32.9, "opp_score": 4.4, "priority": "LOW", "win_rate": 28.9, "activation_rate": 72.7, "recommendation": "Expand systematically. Focus on underserved categories and use referral programs from existing partners.", "approach": "Referral + Email", "expected_conversion": 14.1, "target_categories": ["Burgers", "Chinese", "Healthy"], "success_story": {"zone": "Concepcion", "count": 47, "days": 17, "approach": "email campaigns"}}, {"country": "Mexico", "flag": "🇲🇽", "zone": "Monterrey", "lat": 25.6866, "lng": -100.3161, "active": 696, "onboarding": 69, "potential": 3204, "coverage": 21.7, "demand": 29, "competition": "high", "competitors": ["Rappi", "PedidosYa"], "avg_gmv": 2206.0, "photo_pct": 44.1, "ror_pct": 37.9, "opp_score": 4.3, "priority": "LOW", "win_rate": 30.4, "activation_rate": 68.6, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 14.3, "target_categories": ["Peruvian", "Seafood", "Mexican"], "success_story": {"zone": "Puebla", "count": 25, "days": 32, "approach": "email campaigns"}}, {"country": "Panama", "flag": "🇵🇦", "zone": "David", "lat": 8.4333, "lng": -82.4333, "active": 5, "onboarding": 2, "potential": 20, "coverage": 25.0, "demand": 27, "competition": "high", "competitors": ["PedidosYa", "Rappi"], "avg_gmv": 3414.0, "photo_pct": 28.7, "ror_pct": 82.4, "opp_score": 4.1, "priority": "LOW", "win_rate": 10.6, "activation_rate": 69.3, "recommendation": "Expand systematically. Focus on underserved categories and use referral programs from existing partners.", "approach": "Referral + Email", "expected_conversion": 14.5, "target_categories": ["Sushi", "Colombian", "Burgers"], "success_story": {"zone": "Ciudad de Panama", "count": 63, "days": 44, "approach": "referral program"}}, {"country": "Mexico", "flag": "🇲🇽", "zone": "Tijuana", "lat": 32.5149, "lng": -117.0382, "active": 427, "onboarding": 60, "potential": 2576, "coverage": 16.6, "demand": 18, "competition": "high", "competitors": ["PedidosYa"], "avg_gmv": 1999.0, "photo_pct": 39.5, "ror_pct": 44.9, "opp_score": 3.2, "priority": "LOW", "win_rate": 29.6, "activation_rate": 71.2, "recommendation": "Accelerate outreach. Target top restaurant categories with personalized email campaigns and follow-up calls.", "approach": "Email + Cold Call", "expected_conversion": 20.7, "target_categories": ["Healthy", "Sushi", "Fast Food"], "success_story": {"zone": "Monterrey", "count": 25, "days": 19, "approach": "field visits"}}];
+  var COUNTRIES = ["Chile", "Colombia", "Costa Rica", "Dominican Republic", "Ecuador", "Guatemala", "Mexico", "Panama", "Peru"];
+  var INSIGHTS = ["Guayaquil (Ecuador) has 382 untapped restaurants with demand index 86 — Email + Cold Call recommended", "Ciudad de Panama (Panama) has 23 untapped restaurants with demand index 89 — Referral + Email recommended", "Ciudad de Guatemala (Guatemala) has 28 untapped restaurants with demand index 82 — Email + Cold Call recommended", "Santiago (Chile) has 1408 untapped restaurants with demand index 73 — WhatsApp + Field Visit recommended", "San Jose (Costa Rica) has 616 untapped restaurants with demand index 63 — Email + Cold Call recommended", "Quito (Ecuador) has 481 untapped restaurants with demand index 68 — Email + Cold Call recommended", "CDMX (Mexico) has 7001 untapped restaurants with demand index 66 — Email + Cold Call recommended", "Medellin (Colombia) has 579 untapped restaurants with demand index 66 — Referral + Email recommended"];
+
+  // Populate country filter
+  var countrySelect = document.getElementById("filterCountry");
+  for (var ci = 0; ci < COUNTRIES.length; ci++) {
+    var opt = document.createElement("option");
+    opt.value = COUNTRIES[ci];
+    opt.textContent = COUNTRIES[ci];
+    countrySelect.appendChild(opt);
+  }
+
+  // Populate ticker
+  var tickerEl = document.getElementById("tickerScroll");
+  var tickerHTML = "";
+  for (var ti = 0; ti < INSIGHTS.length; ti++) {
+    tickerHTML += '<span class="ticker-item">' + INSIGHTS[ti] + '</span>';
+  }
+  tickerEl.innerHTML = tickerHTML + tickerHTML;
+
+  // ─── MAP INIT ──────────────────────────────────────────────────
+  var map = L.map("map", {
+    center: [4, -78],
+    zoom: 4,
+    zoomControl: true,
+    maxBounds: [[-60, -130], [40, -50]],
+    maxBoundsViscosity: 1.0
+  });
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 18,
+    opacity: 0.85
+  }).addTo(map);
+
+  // Dark-ish tile style override via CSS filter
+  var tilePane = map.getPane("tilePane");
+  if (tilePane) {
+    tilePane.style.filter = "brightness(0.6) contrast(1.2) saturate(0.3)";
+  }
+
+  // ─── HELPER: get zone color ────────────────────────────────────
+  function getZoneColor(z) {
+    if (z.coverage > 50) return "#276EF1";
+    if (z.coverage > 35) return "#06C167";
+    if (z.coverage < 15 && z.demand > 60) return "#E11D48";
+    return "#F5A623";
+  }
+
+  function getZoneRadius(z) {
+    var base = Math.sqrt(z.potential) * 250;
+    return Math.max(8000, Math.min(base, 80000));
+  }
+
+  function getPriorityBadge(p) {
+    var cls = "badge-low";
+    if (p === "CRITICAL") cls = "badge-crit";
+    else if (p === "HIGH") cls = "badge-high";
+    else if (p === "MEDIUM") cls = "badge-med";
+    return '<span class="' + cls + '">' + p + '</span>';
+  }
+
+  function getCovColor(cov) {
+    if (cov > 50) return "#276EF1";
+    if (cov > 35) return "#06C167";
+    if (cov < 15) return "#E11D48";
+    return "#F5A623";
+  }
+
+  // ─── CREATE MARKERS ────────────────────────────────────────────
+  var allMarkers = [];
+  var oppMarkers = L.layerGroup();
+  var covMarkers = L.layerGroup();
+
+  for (var mi2 = 0; mi2 < ZONES.length; mi2++) {
+    (function(idx) {
+      var z = ZONES[idx];
+      var color = getZoneColor(z);
+      var radius = getZoneRadius(z);
+      var marker = L.circle([z.lat, z.lng], {
+        radius: radius,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.55,
+        weight: 2,
+        opacity: 0.7
+      });
+
+      var covClass = z.coverage < 20 ? "r" : (z.coverage < 40 ? "a" : "g");
+      var popupContent = '<div class="popup-title">' + z.zone + '</div>' +
+        '<div class="popup-country">' + z.flag + " " + z.country + '</div>' +
+        '<div class="popup-row"><span class="popup-label">Active / Potential</span><span class="popup-val">' + z.active + " / " + z.potential + '</span></div>' +
+        '<div class="popup-row"><span class="popup-label">Coverage</span><span class="popup-val ' + covClass + '">' + z.coverage + '%</span></div>' +
+        '<div class="popup-row"><span class="popup-label">Win Rate</span><span class="popup-val">' + z.win_rate + '%</span></div>' +
+        '<div class="popup-row"><span class="popup-label">Activation Rate</span><span class="popup-val">' + z.activation_rate + '%</span></div>' +
+        '<div class="popup-row"><span class="popup-label">Competition</span><span class="popup-val">' + z.competition + " (" + z.competitors.join(", ") + ')</span></div>' +
+        '<div class="popup-row"><span class="popup-label">Demand Index</span><span class="popup-val">' + z.demand + '</span></div>' +
+        '<div class="popup-rec">' + z.recommendation.substring(0, 80) + '...</div>' +
+        '<button class="popup-btn" onclick="window.selectZone(' + idx + ')">View Full Details</button>';
+
+      marker.bindPopup(popupContent, { maxWidth: 280, className: "" });
+
+      marker.on("click", function() {
+        window.selectZone(idx);
+      });
+
+      marker.zoneIdx = idx;
+      allMarkers.push(marker);
+
+      if (color === "#E11D48" || color === "#F5A623") {
+        oppMarkers.addLayer(marker);
+      }
+      if (color === "#06C167" || color === "#276EF1") {
+        covMarkers.addLayer(marker);
+      }
+      marker.addTo(map);
+    })(mi2);
+  }
+
+  var overlays = {
+    "Opportunity Zones": oppMarkers,
+    "Covered Zones": covMarkers
+  };
+  L.control.layers(null, overlays, { collapsed: false, position: "topright" }).addTo(map);
+
+  // ─── ZONE LIST ─────────────────────────────────────────────────
+  var zoneListEl = document.getElementById("zoneList");
+  var selectedIdx = -1;
+
+  function renderZoneList(filtered) {
+    var html = "";
+    for (var li = 0; li < filtered.length; li++) {
+      var z = filtered[li];
+      var origIdx = ZONES.indexOf(z);
+      var covColor = getCovColor(z.coverage);
+      html += '<div class="zone-item" data-idx="' + origIdx + '" onclick="window.selectZone(' + origIdx + ')">' +
+        '<div class="zone-hdr"><div><span class="zone-name">' + z.flag + " " + z.zone + '</span><span class="zone-country">' + z.country + '</span></div>' + getPriorityBadge(z.priority) + '</div>' +
+        '<div class="cov-bar-wrap"><div class="cov-bar" style="width:' + Math.min(z.coverage, 100) + '%;background:' + covColor + '"></div></div>' +
+        '<div class="zone-metrics"><span>' + z.active + "/" + z.potential + " rest.</span><span>Demand: " + z.demand + '</span><span>Score: ' + z.opp_score + '</span></div>' +
+        '</div>';
+    }
+    zoneListEl.innerHTML = html;
+  }
+
+  function getFiltered() {
+    var fc = document.getElementById("filterCountry").value;
+    var fp = document.getElementById("filterPriority").value;
+    var result = [];
+    for (var fi = 0; fi < ZONES.length; fi++) {
+      var z = ZONES[fi];
+      if (fc !== "All" && z.country !== fc) continue;
+      if (fp !== "All" && z.priority !== fp) continue;
+      result.push(z);
+    }
+    return result;
+  }
+
+  window.applyFilters = function() {
+    var filtered = getFiltered();
+    renderZoneList(filtered);
+    updateSummary(filtered);
+    // Show/hide markers
+    for (var ai = 0; ai < allMarkers.length; ai++) {
+      var z = ZONES[allMarkers[ai].zoneIdx];
+      var fc = document.getElementById("filterCountry").value;
+      var fp = document.getElementById("filterPriority").value;
+      var show = true;
+      if (fc !== "All" && z.country !== fc) show = false;
+      if (fp !== "All" && z.priority !== fp) show = false;
+      if (show) {
+        if (!map.hasLayer(allMarkers[ai])) map.addLayer(allMarkers[ai]);
+      } else {
+        if (map.hasLayer(allMarkers[ai])) map.removeLayer(allMarkers[ai]);
+      }
+    }
+    // Fit bounds to visible
+    var visCoords = [];
+    for (var vi = 0; vi < allMarkers.length; vi++) {
+      if (map.hasLayer(allMarkers[vi])) {
+        visCoords.push(allMarkers[vi].getLatLng());
+      }
+    }
+    if (visCoords.length > 0) {
+      map.fitBounds(L.latLngBounds(visCoords), { padding: [40, 40], maxZoom: 8 });
+    }
+  };
+
+  function updateSummary(filtered) {
+    var tz = filtered.length;
+    var ac = 0, ho = 0, tg = 0;
+    for (var si = 0; si < filtered.length; si++) {
+      ac += filtered[si].coverage;
+      if (filtered[si].priority === "CRITICAL" || filtered[si].priority === "HIGH") ho++;
+      tg += (filtered[si].potential - filtered[si].active);
+    }
+    document.getElementById("sumZones").textContent = tz;
+    document.getElementById("sumCov").textContent = tz > 0 ? (ac / tz).toFixed(1) + "%" : "0%";
+    document.getElementById("sumHot").textContent = ho;
+    document.getElementById("sumGap").textContent = tg.toLocaleString();
+  }
+
+  // ─── SELECT ZONE ───────────────────────────────────────────────
+  window.selectZone = function(idx) {
+    selectedIdx = idx;
+    var z = ZONES[idx];
+
+    // Highlight list item
+    var items = document.querySelectorAll(".zone-item");
+    for (var hi = 0; hi < items.length; hi++) {
+      items[hi].classList.remove("active");
+      if (parseInt(items[hi].getAttribute("data-idx")) === idx) {
+        items[hi].classList.add("active");
+        items[hi].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }
+
+    // Fly to zone
+    map.flyTo([z.lat, z.lng], 8, { duration: 1.2 });
+
+    // Open popup
+    for (var pi = 0; pi < allMarkers.length; pi++) {
+      if (allMarkers[pi].zoneIdx === idx) {
+        setTimeout(function(m) { return function() { m.openPopup(); }; }(allMarkers[pi]), 1300);
+        break;
+      }
+    }
+
+    // Update AI panel
+    var gap = z.potential - z.active;
+    var aiHTML = '<h3><span style="font-size:16px">&#9889;</span> Zone Intelligence: ' + z.zone + '</h3>' +
+
+      '<div class="ai-section"><h4>Current State</h4>' +
+      '<p>' + z.active + ' active restaurants out of ' + z.potential + ' total market (' + z.coverage + '% coverage). ' +
+      'Demand index: ' + z.demand + '/100. Competition level: ' + z.competition + ' (' + z.competitors.join(", ") + '). ' +
+      'Win rate: ' + z.win_rate + '%, activation: ' + z.activation_rate + '%.</p></div>' +
+
+      '<div class="ai-section"><h4>Top 3 Categories to Target</h4>' +
+      '<div class="ai-cats">';
+    for (var ci2 = 0; ci2 < z.target_categories.length; ci2++) {
+      aiHTML += '<span class="ai-cat">' + z.target_categories[ci2] + '</span>';
+    }
+    aiHTML += '</div></div>' +
+
+      '<div class="ai-section"><h4>Recommended Approach</h4>' +
+      '<p><strong>' + z.approach + '</strong> &mdash; ' + z.recommendation + '</p>' +
+      '<p style="margin-top:4px;color:var(--green)">Expected conversion rate: ' + z.expected_conversion + '%</p></div>' +
+
+      '<div class="ai-section"><h4>Competition Analysis</h4>' +
+      '<p>' + z.competitors.join(" and ") + ' operate at <strong>' + z.competition + '</strong> intensity in ' + z.zone + '. ';
+    if (z.competition === "high") {
+      aiHTML += 'Recommend differentiating on onboarding speed and menu optimization support. Avoid price wars.';
+    } else if (z.competition === "medium") {
+      aiHTML += 'Opportunity to capture market share through proactive outreach before competitors scale.';
+    } else {
+      aiHTML += 'Low competitive pressure means restaurants are less aware of delivery platforms. Education-first approach recommended.';
+    }
+    aiHTML += '</p></div>' +
+
+      '<div class="ai-section"><h4>Sample Outreach Message</h4>' +
+      '<div class="ai-msg"><p>"Hola! Somos Uber Eats y estamos expandiendo en ' + z.zone + '. ' +
+      'Actualmente ' + z.active + ' restaurantes ya generan ingresos extra con nosotros. ' +
+      'Le gustaria conocer como podemos ayudarle a llegar a mas clientes? Sin costo de inscripcion."</p></div></div>' +
+
+      '<div class="ai-section"><h4>Success Story</h4>' +
+      '<div class="ai-story"><p>In <strong>' + z.success_story.zone + '</strong>, we onboarded <strong>' + z.success_story.count +
+      '</strong> restaurants in <strong>' + z.success_story.days + ' days</strong> using <strong>' + z.success_story.approach +
+      '</strong>. Coverage increased from ' + Math.max(5, Math.round(z.coverage * 0.6)) + '% to ' + Math.min(95, Math.round(z.coverage * 1.4)) + '%.</p></div></div>';
+
+    document.getElementById("aiPanel").innerHTML = aiHTML;
+  };
+
+  // ─── INITIAL RENDER ────────────────────────────────────────────
+  renderZoneList(ZONES);
+
+})();
+</script>
+</body>
+</html>
